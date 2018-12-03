@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/ahmdrz/goinsta"
@@ -16,11 +17,18 @@ var (
 	password = kingpin.Flag("password", "Instagram password.").Required().String()
 	mongodb  = kingpin.Flag("mongodb", "Mongodb connection.").Required().String()
 	database = kingpin.Flag("database", "database").Required().String()
+	workers  = kingpin.Flag("workers", "Number of Workers").Required().Int()
+	root     = kingpin.Flag("root", "Root user").Required().String()
 )
 
 func main() {
-	log.SetLevel(log.DebugLevel)
 	kingpin.Parse()
+
+	if *verbose {
+		log.SetLevel(log.DebugLevel)
+	} else {
+		log.SetLevel(log.InfoLevel)
+	}
 
 	// Connect to mongodb
 	client, err := mongo.NewClient(*mongodb)
@@ -36,26 +44,30 @@ func main() {
 	}
 
 	dat := client.Database(*database)
+	log.Info("Connected to mongodb on ", *mongodb)
 
 	// Get Root user
 	insta := goinsta.New(*username, *password)
 	if err := insta.Login(); err != nil {
 		panic(err)
 	}
+	log.Info("Authenticated as ", *username)
 
-	user, err := insta.Profiles.ByName("sas_weingarten")
-
+	user, err := insta.Profiles.ByName("lexodexo.de")
 	if err != nil {
 		panic(err)
 	}
+	log.Info("Loaded root user ", user.Username)
 
-	user.Sync()
-	following := user.Following()
-
-	for following.Next() {
-		for _, u := range following.Users {
-			saveUser(dat, &u)
-
-		}
+	// Initialize workers
+	users := make(chan *goinsta.User, 500000)
+	var wg sync.WaitGroup
+	for i := 0; i < *workers; i++ {
+		wg.Add(1)
+		log.Debug("Starting worker (", i, ")")
+		go Scrape(&wg, users, dat)
 	}
+	users <- user
+	wg.Wait()
+
 }
