@@ -22,6 +22,7 @@ var (
 )
 
 func main() {
+	// Parse CLI Flags
 	kingpin.Parse()
 
 	if *verbose {
@@ -53,21 +54,22 @@ func main() {
 	}
 	log.Info("Authenticated as ", *username)
 
-	user, err := insta.Profiles.ByName("lexodexo.de")
+	rootUser, err := insta.Profiles.ByName(*root)
 	if err != nil {
 		panic(err)
 	}
-	log.Info("Loaded root user ", user.Username)
+	log.Info("Loaded root user ", rootUser.Username)
 
 	// Initialize workers
-	users := make(chan *goinsta.User, 500000)
+	queue := make(chan *goinsta.User, 100000000)
 	var wg sync.WaitGroup
+
 	for i := 0; i < *workers; i++ {
 		wg.Add(1)
 		log.Debug("Starting worker (", i, ")")
-		go Scrape(&wg, users, dat)
+		go Scrape(&wg, dat, queue)
 	}
-	users <- user
-	wg.Wait()
+	queue <- rootUser
 
+	wg.Wait()
 }

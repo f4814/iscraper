@@ -3,7 +3,7 @@ package models
 import "github.com/ahmdrz/goinsta"
 
 type User struct {
-	ID                         int64   `bson:"id"`
+	ID                         int64   `bson:"_id"`
 	Username                   string  `bson:"username"`
 	FullName                   string  `bson:"full_name"`
 	Biography                  string  `bson:"biography"`
@@ -19,10 +19,12 @@ type User struct {
 	AllowedCommenterType       string  `bson:"allowed_commenter_type"`
 	IsVerified                 bool    `bson:"is_verified"`
 	MediaCount                 int     `bson:"media_count"`
-	FollowerCount              int     `bson:"follower_count"`
 	Followers                  []int64 `bson:"followers"`
-	FollowingCount             int     `bson:"following_count"`
+	FollowerCount              int     `bson:"follower_count"`
+	FollowerStructs            []*goinsta.User
 	Following                  []int64 `bson:"following"`
+	FollowingCount             int     `bson:"following_count"`
+	FollowingStructs           []*goinsta.User
 	FollowingTagCount          int     `bson:"following_tag_count"`
 	ProfileContext             string  `bson:"profile_context"`
 	GeoMediaCount              int     `bson:"geo_media_count"`
