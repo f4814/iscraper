@@ -31,6 +31,28 @@ func saveUser(d *mongo.Database, user *models.User) error {
 	return nil
 }
 
+// Save a models.Item
+func saveItem(d *mongo.Database, item *models.Item) error {
+	if err := writeBSON(d, "items", item); err != nil {
+		// Do not return duplicate key errors
+		switch t := err.(type) {
+		default:
+			return err
+		case mongo.WriteErrors:
+			for _, e := range t {
+				if e.Code != 11000 {
+					return err
+				}
+			}
+			log.Warn("Failed to add duplicate item")
+		}
+	}
+
+	log.Debug("Added Item")
+
+	return nil
+}
+
 // Checks whether the given user already exists
 func checkUser(d *mongo.Database, username string) bool {
 	filter := bson.D{{"username", username}}

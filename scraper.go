@@ -25,8 +25,16 @@ func Scrape(wg *sync.WaitGroup, d *mongo.Database, queue chan *goinsta.User) {
 			continue
 		}
 
-		scraped := scrapeUser(user);
+		scraped := scrapeUser(user)
+		feed := user.Feed()
 		saveUser(d, scraped)
+
+		for feed.Next() {
+			for _, i := range feed.Items {
+				item := scrapeItem(&i)
+				saveItem(d, item)
+			}
+		}
 
 		for _, u := range scraped.FollowingStructs {
 			queue <- u
@@ -61,6 +69,16 @@ func scrapeUser(user *goinsta.User) *models.User {
 			data.FollowingStructs = append(data.FollowingStructs, &v)
 		}
 	}
+
+	return &data
+}
+
+// Scrape a goinsta.Item into a models.User
+func scrapeItem(item *goinsta.Item) *models.Item {
+	var data models.Item
+
+	item.SyncLikers()
+	data.FromIG(item)
 
 	return &data
 }
