@@ -53,7 +53,10 @@ func Scrape(wg *sync.WaitGroup, d *mongo.Database, queue chan goinsta.User) {
 // Scrape a goinsta.User into a models.User
 func scrapeUser(user *goinsta.User) *models.User {
 	var data models.User
-	user.Sync()
+
+	if err := user.Sync(); err != nil {
+		log.Warn(err)
+	}
 
 	log.Info("Scraping user: ", user.Username)
 

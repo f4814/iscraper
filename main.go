@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"os"
 	"sync"
 	"time"
 
@@ -39,14 +40,16 @@ func main() {
 	// Connect to mongodb
 	client, err := mongo.NewClient(*mongodb)
 	if err != nil {
-		panic(err)
+		log.Fatal("Failed to connect to MongoDB: ", err)
+		os.Exit(1)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	err = client.Connect(ctx)
 	if err != nil {
-		panic(err)
+		log.Fatal("Failed to connect to MongoDB: ",  err)
+		os.Exit(1)
 	}
 
 	dat := client.Database(*database)
@@ -55,13 +58,15 @@ func main() {
 	// Get Root user
 	insta := goinsta.New(*username, *password)
 	if err := insta.Login(); err != nil {
-		panic(err)
+		log.Fatal("Failed to authenticate with instagram: ", err)
+		os.Exit(1)
 	}
 	log.Info("Authenticated as ", *username)
 
 	rootUser, err := insta.Profiles.ByName(*root)
 	if err != nil {
-		panic(err)
+		log.Fatal("Failed to load root user: ", err)
+		os.Exit(1)
 	}
 	log.Info("Loaded root user ", rootUser.Username)
 

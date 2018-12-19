@@ -48,7 +48,7 @@ func saveItem(d *mongo.Database, item *models.Item) error {
 		}
 	}
 
-	log.Debug("Added Item")
+	log.Debug("Added Item: ", item.ID)
 
 	return nil
 }
