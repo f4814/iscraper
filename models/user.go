@@ -21,10 +21,10 @@ type User struct {
 	MediaCount                 int     `bson:"media_count"`
 	Followers                  []int64 `bson:"followers"`
 	FollowerCount              int     `bson:"follower_count"`
-	FollowerStructs            []*goinsta.User
+	FollowerStructs            []goinsta.User
 	Following                  []int64 `bson:"following"`
 	FollowingCount             int     `bson:"following_count"`
-	FollowingStructs           []*goinsta.User
+	FollowingStructs           []goinsta.User
 	FollowingTagCount          int     `bson:"following_tag_count"`
 	ProfileContext             string  `bson:"profile_context"`
 	GeoMediaCount              int     `bson:"geo_media_count"`

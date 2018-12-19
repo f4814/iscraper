@@ -19,11 +19,16 @@ var (
 	database = kingpin.Flag("database", "database").Required().String()
 	workers  = kingpin.Flag("workers", "Number of Workers").Required().Int()
 	root     = kingpin.Flag("root", "Root user").Required().String()
+	debug    = kingpin.Flag("debug", "Show log caller method").Bool()
 )
 
 func main() {
 	// Parse CLI Flags
 	kingpin.Parse()
+
+	if *debug {
+		log.SetReportCaller(true)
+	}
 
 	if *verbose {
 		log.SetLevel(log.DebugLevel)
@@ -61,7 +66,7 @@ func main() {
 	log.Info("Loaded root user ", rootUser.Username)
 
 	// Initialize workers
-	queue := make(chan *goinsta.User, 100000000)
+	queue := make(chan goinsta.User, 1000000)
 	var wg sync.WaitGroup
 
 	for i := 0; i < *workers; i++ {
@@ -69,7 +74,7 @@ func main() {
 		log.Debug("Starting worker (", i, ")")
 		go Scrape(&wg, dat, queue)
 	}
-	queue <- rootUser
+	queue <- *rootUser
 
 	wg.Wait()
 }

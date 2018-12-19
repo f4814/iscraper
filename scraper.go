@@ -9,7 +9,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func Scrape(wg *sync.WaitGroup, d *mongo.Database, queue chan *goinsta.User) {
+func Scrape(wg *sync.WaitGroup, d *mongo.Database, queue chan goinsta.User) {
 	defer wg.Done()
 
 	for {
@@ -21,14 +21,15 @@ func Scrape(wg *sync.WaitGroup, d *mongo.Database, queue chan *goinsta.User) {
 		}
 
 		if checkUser(d, user.Username) {
-			log.Debug("Not rescraping user: ", user.Username)
+			log.Debug("Not rescraping user: ", user.Username, " (", len(queue), ")")
 			continue
 		}
 
-		scraped := scrapeUser(user)
+		scraped := scrapeUser(&user)
 		feed := user.Feed()
 		saveUser(d, scraped)
 
+		log.Info("Scraping user items: ", scraped.Username)
 		for feed.Next() {
 			for _, i := range feed.Items {
 				item := scrapeItem(&i)
@@ -36,11 +37,15 @@ func Scrape(wg *sync.WaitGroup, d *mongo.Database, queue chan *goinsta.User) {
 			}
 		}
 
-		for _, u := range scraped.FollowingStructs {
-			queue <- u
-		}
-		for _, u := range scraped.FollowerStructs {
-			queue <- u
+		toQueue := append(scraped.FollowingStructs, scraped.FollowerStructs...)
+
+		for _, u := range toQueue {
+			if u.ID != user.ID && !checkUser(d, u.Username) {
+				queue <- u
+				log.Debug("Queueing user: ", u.Username, " (", len(queue), ")")
+			} else {
+				log.Debug("Not requeueing user: ", u.Username)
+			}
 		}
 	}
 }
@@ -59,14 +64,14 @@ func scrapeUser(user *goinsta.User) *models.User {
 	for followers.Next() {
 		for _, v := range followers.Users {
 			data.Followers = append(data.Followers, v.ID)
-			data.FollowerStructs = append(data.FollowerStructs, &v)
+			data.FollowerStructs = append(data.FollowerStructs, v)
 		}
 	}
 
 	for following.Next() {
 		for _, v := range following.Users {
 			data.Following = append(data.Following, v.ID)
-			data.FollowingStructs = append(data.FollowingStructs, &v)
+			data.FollowingStructs = append(data.FollowingStructs, v)
 		}
 	}
 
