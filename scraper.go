@@ -2,6 +2,7 @@ package main
 
 import (
 	"sync"
+	"time"
 
 	"github.com/ahmdrz/goinsta"
 	"github.com/f4814/iscraper/models"
@@ -9,14 +10,16 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func Scrape(wg *sync.WaitGroup, d *mongo.Database, queue chan goinsta.User) {
+func Scrape(wg *sync.WaitGroup, d *mongo.Database, queue chan goinsta.User,
+	cooldown time.Duration) {
+
 	defer wg.Done()
 
 	for {
 		user, more := <-queue
 
 		if !more {
-			log.Debug("Stopping Worker")
+			log.Debug("Closed channel, stopping worker")
 			return
 		}
 
@@ -25,40 +28,40 @@ func Scrape(wg *sync.WaitGroup, d *mongo.Database, queue chan goinsta.User) {
 			continue
 		}
 
-		scraped := scrapeUser(&user)
+		scraped := scrapeUser(&user, cooldown)
 		feed := user.Feed()
-		saveUser(d, scraped)
+		saveUser(d, *scraped)
 
 		log.Info("Scraping user items: ", scraped.Username)
 		for feed.Next() {
 			for _, i := range feed.Items {
-				item := scrapeItem(&i)
+				item := scrapeItem(&i, cooldown)
 				saveItem(d, item)
 			}
 		}
 
 		toQueue := append(scraped.FollowingStructs, scraped.FollowerStructs...)
 
-		for _, u := range toQueue {
-			if u.ID != user.ID && !checkUser(d, u.Username) {
-				queue <- u
-				log.Debug("Queueing user: ", u.Username, " (", len(queue), ")")
-			} else {
-				log.Debug("Not requeueing user: ", u.Username)
-			}
+		if err := QueueMany(user, toQueue, queue, d); err != nil {
+			log.Fatal("Failed to Queue user: ", err)
 		}
 	}
 }
 
 // Scrape a goinsta.User into a models.User
-func scrapeUser(user *goinsta.User) *models.User {
+func scrapeUser(user *goinsta.User, cooldown time.Duration) *models.User {
 	var data models.User
 
-	if err := user.Sync(); err != nil {
-		log.Warn(err)
-	}
-
 	log.Info("Scraping user: ", user.Username)
+
+	for {
+		if err := user.Sync(); err == nil {
+			break
+		}
+
+		log.Warn("Blocked by API, cooling down worker for ", cooldown, " seconds")
+		time.Sleep(cooldown)
+	}
 
 	data.FromIG(user)
 	followers := user.Followers()
@@ -82,10 +85,18 @@ func scrapeUser(user *goinsta.User) *models.User {
 }
 
 // Scrape a goinsta.Item into a models.User
-func scrapeItem(item *goinsta.Item) *models.Item {
+func scrapeItem(item *goinsta.Item, cooldown time.Duration) *models.Item {
 	var data models.Item
 
-	item.SyncLikers()
+	for {
+		if err := item.SyncLikers(); err == nil {
+			break
+		}
+
+		log.Warn("Blocked by API, cooling down worker for ", cooldown, " seconds")
+		time.Sleep(cooldown)
+	}
+
 	data.FromIG(item)
 
 	return &data

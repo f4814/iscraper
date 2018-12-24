@@ -10,19 +10,15 @@ import (
 )
 
 // Save a models.User
-func saveUser(d *mongo.Database, user *models.User) error {
+func saveUser(d *mongo.Database, user models.User) error {
+	user.FollowerStructs = nil
+	user.FollowingStructs = nil
+
 	if err := writeBSON(d, "users", user); err != nil {
-		// Do not return duplicate key errors
-		switch t := err.(type) {
-		default:
-			return err
-		case mongo.WriteErrors:
-			for _, e := range t {
-				if e.Code != 11000 {
-					return err
-				}
-			}
+		if isDuplicateError(err) {
 			log.Warn("Failed to add duplicate user: ", user.Username)
+		} else {
+			log.Fatal(err)
 		}
 	}
 
@@ -34,17 +30,10 @@ func saveUser(d *mongo.Database, user *models.User) error {
 // Save a models.Item
 func saveItem(d *mongo.Database, item *models.Item) error {
 	if err := writeBSON(d, "items", item); err != nil {
-		// Do not return duplicate key errors
-		switch t := err.(type) {
-		default:
-			return err
-		case mongo.WriteErrors:
-			for _, e := range t {
-				if e.Code != 11000 {
-					return err
-				}
-			}
+		if isDuplicateError(err) {
 			log.Warn("Failed to add duplicate item")
+		} else {
+			log.Fatal(err)
 		}
 	}
 
@@ -87,4 +76,20 @@ func writeBSON(d *mongo.Database, collection string, val interface{}) error {
 	}
 
 	return nil
+}
+
+// Check whether the error is an mongodb duplicate error
+func isDuplicateError(err error) bool {
+	// Do not return duplicate key errors
+	switch t := err.(type) {
+	default:
+		return false
+	case mongo.WriteErrors:
+		for _, e := range t {
+			if e.Code != 11000 {
+				return false
+			}
+		}
+	}
+	return true
 }

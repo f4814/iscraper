@@ -3,34 +3,34 @@ package models
 import "github.com/ahmdrz/goinsta"
 
 type User struct {
-	ID                         int64   `bson:"_id"`
-	Username                   string  `bson:"username"`
-	FullName                   string  `bson:"full_name"`
-	Biography                  string  `bson:"biography"`
-	ProfilePicURL              string  `bson:"profile_pic_url"`
-	Email                      string  `bson:"email"`
-	PhoneNumber                string  `bson:"phone_number"`
-	IsBusiness                 bool    `bson:"is_business"`
-	Gender                     int     `bson:"gender"` // XXX WHAT
-	ProfilePicID               string  `bson:"profile_pic_id"`
-	HasAnonymousProfilePicture bool    `bson:"has_anonymous_profile_picture"`
-	IsPrivate                  bool    `bson:"is_private"`
-	IsUnpublished              bool    `bson:"is_unpublished"`
-	AllowedCommenterType       string  `bson:"allowed_commenter_type"`
-	IsVerified                 bool    `bson:"is_verified"`
-	MediaCount                 int     `bson:"media_count"`
-	Followers                  []int64 `bson:"followers"`
-	FollowerCount              int     `bson:"follower_count"`
-	FollowerStructs            []goinsta.User
-	Following                  []int64 `bson:"following"`
-	FollowingCount             int     `bson:"following_count"`
-	FollowingStructs           []goinsta.User
-	FollowingTagCount          int     `bson:"following_tag_count"`
-	ProfileContext             string  `bson:"profile_context"`
-	GeoMediaCount              int     `bson:"geo_media_count"`
-	ExternalURL                string  `bson:"external_url"`
-	HasBiographyTranslation    bool    `bson:"has_biography_translation"`
-	ExternalLynxURL            string  `bson:"external_lynx_url"`
+	ID                         int64          `bson:"_id"`
+	Username                   string         `bson:"username"`
+	FullName                   string         `bson:"full_name"`
+	Biography                  string         `bson:"biography"`
+	ProfilePicURL              string         `bson:"profile_pic_url"`
+	Email                      string         `bson:"email"`
+	PhoneNumber                string         `bson:"phone_number"`
+	IsBusiness                 bool           `bson:"is_business"`
+	Gender                     int            `bson:"gender"` // XXX WHAT
+	ProfilePicID               string         `bson:"profile_pic_id"`
+	HasAnonymousProfilePicture bool           `bson:"has_anonymous_profile_picture"`
+	IsPrivate                  bool           `bson:"is_private"`
+	IsUnpublished              bool           `bson:"is_unpublished"`
+	AllowedCommenterType       string         `bson:"allowed_commenter_type"`
+	IsVerified                 bool           `bson:"is_verified"`
+	MediaCount                 int            `bson:"media_count"`
+	Followers                  []int64        `bson:"followers"`
+	FollowerCount              int            `bson:"follower_count"`
+	FollowerStructs            []goinsta.User `bson:"follower_structs,omitempty"`
+	Following                  []int64        `bson:"following"`
+	FollowingCount             int            `bson:"following_count"`
+	FollowingStructs           []goinsta.User `bson:"following_structs,omitempty"`
+	FollowingTagCount          int            `bson:"following_tag_count"`
+	ProfileContext             string         `bson:"profile_context"`
+	GeoMediaCount              int            `bson:"geo_media_count"`
+	ExternalURL                string         `bson:"external_url"`
+	HasBiographyTranslation    bool           `bson:"has_biography_translation"`
+	ExternalLynxURL            string         `bson:"external_lynx_url"`
 	BiographyWithEntities      struct {
 		RawText  string        `bson:"raw_text"`
 		Entities []interface{} `bson:"entities"`
