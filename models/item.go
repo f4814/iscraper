@@ -7,7 +7,7 @@ import (
 type Item struct {
 	ID string `bson:"_id"`
 
-	Comments []Comment `bson:"comments"` // XXX
+	Comments Comments `bson:"comments"`
 
 	TakenAt          float64  `bson:"taken_at"`
 	Pk               int64    `bson:"pk"`
@@ -25,18 +25,12 @@ type Item struct {
 	CaptionIsEdited  bool     `bson:"caption_is_edited"`
 	Likes            int      `bson:"like_count"`
 	HasLiked         bool     `bson:"has_liked"`
-
-	// Toplikers can be `string` or `[]string`.
-	// Use TopLikers function instead of getting it directly.
 	Toplikers                    interface{} `bson:"top_likers"`
 	Likers                       []int64     `bson:"likers"`
 	CommentLikesEnabled          bool        `bson:"comment_likes_enabled"`
 	CommentThreadingEnabled      bool        `bson:"comment_threading_enabled"`
 	HasMoreComments              bool        `bson:"has_more_comments"`
 	MaxNumVisiblePreviewComments int         `bson:"max_num_visible_preview_comments"`
-
-	// Previewcomments can be `string` or `[]string` or `[]Comment`.
-	// Use PreviewComments function instead of getting it directly.
 	Previewcomments interface{} `bson:"preview_comments,omitempty"`
 	CommentCount    int         `bson:"comment_count"`
 	PhotoOfYou      bool        `bson:"photo_of_you"`
@@ -147,6 +141,51 @@ type Caption struct {
 	HasTranslation  bool   `bson:"has_translation"`
 }
 
+type Comment struct {
+	ID                             int64   `bson:"pk"`
+	Text                           string  `bson:"text"`
+	Type                           int     `bson:"type"`
+	UserID                         int64   `bson:"user_id"`
+	BitFlags                       int     `bson:"bit_flags"`
+	ChildCommentCount              int     `bson:"child_comment_count"`
+	CommentIndex                   int     `bson:"comment_index"`
+	CommentLikeCount               int     `bson:"comment_like_count"`
+	ContentType                    string  `bson:"content_type"`
+	CreatedAt                      int64   `bson:"created_at"`
+	CreatedAtUtc                   int64   `bson:"created_at_utc"`
+	DidReportAsSpam                bool    `bson:"did_report_as_spam"`
+	HasLikedComment                bool    `bson:"has_liked_comment"`
+	InlineComposerDisplayCondition string  `bson:"inline_composer_display_condition"`
+	OtherPreviewUsersID            []int64 `bson:"other_preview_users_id"`
+	PreviewChildCommentsID         []int64 `bson:"preview_child_comments_id"`
+	NextMaxChildCursor             string  `bson:"next_max_child_cursor,omitempty"`
+	HasMoreTailChildComments       bool    `bson:"has_more_tail_child_comments,omitempty"`
+	NextMinChildCursor             string  `bson:"next_min_child_cursor,omitempty"`
+	HasMoreHeadChildComments       bool    `bson:"has_more_head_child_comments,omitempty"`
+	NumTailChildComments           int     `bson:"num_tail_child_comments,omitempty"`
+	NumHeadChildComments           int     `bson:"num_head_child_comments,omitempty"`
+	Status                         string  `bson:"status"`
+}
+
+type Comments struct {
+    Items                          []Comment `bson:"comments"`
+    CommentCount                   int64     `bson:"comment_count"`
+    Caption                        Caption   `bson:"caption"`
+    CaptionIsEdited                bool      `bson:"caption_is_edited"`
+    HasMoreComments                bool      `bson:"has_more_comments"`
+    HasMoreHeadloadComments        bool      `bson:"has_more_headload_comments"`
+    ThreadingEnabled               bool      `bson:"threading_enabled"`
+    MediaHeaderDisplay             string    `bson:"media_header_display"`
+    InitiateAtTop                  bool      `bson:"initiate_at_top"`
+    InsertNewCommentToTop          bool      `bson:"insert_new_comment_to_top"`
+    PreviewComments                []Comment `bson:"preview_comments"`
+    NextID                         string    `bson:"next_max_id"`
+    CommentLikesEnabled            bool      `bson:"comment_likes_enabled"`
+    DisplayRealtimeTypingIndicator bool      `bson:"display_realtime_typing_indicator"`
+    Status                         string    `bson:"status"`
+}
+
+
 func (m *Image) FromIG(i *goinsta.Candidate) {
 	m.Width = i.Width
 	m.Height = i.Height
@@ -207,6 +246,71 @@ func (m *Video) FromIG(v *goinsta.Video) {
 	m.Width = v.Width
 	m.URL = v.URL
 	m.ID = v.ID
+}
+
+func (m *Comment) FromIG(c *goinsta.Comment) {
+	m.ID = c.ID
+	m.Text = c.Text
+	m.Type = c.Type
+	m.UserID = c.UserID
+	m.BitFlags = c.BitFlags
+	m.ChildCommentCount = c.ChildCommentCount
+	m.CommentIndex = c.CommentIndex
+	m.CommentLikeCount = c.CommentLikeCount
+	m.ContentType = c.ContentType
+	m.CreatedAt = c.CreatedAt
+	m.CreatedAtUtc = c.CreatedAtUtc
+	m.DidReportAsSpam = c.DidReportAsSpam
+	m.HasLikedComment = c.HasLikedComment
+	m.InlineComposerDisplayCondition = c.InlineComposerDisplayCondition
+	m.NextMaxChildCursor = c.NextMaxChildCursor
+	m.HasMoreTailChildComments = c.HasMoreTailChildComments
+	m.NextMinChildCursor = c.NextMinChildCursor
+	m.HasMoreHeadChildComments = c.HasMoreHeadChildComments
+	m.NumTailChildComments = c.NumTailChildComments
+	m.NumHeadChildComments = c.NumHeadChildComments
+	m.Status = c.Status
+
+	for _, v := range c.OtherPreviewUsers {
+		m.OtherPreviewUsersID = append(m.OtherPreviewUsersID, v.ID)
+	}
+
+	for _, v := range c.PreviewChildComments {
+		m.PreviewChildCommentsID = append(m.PreviewChildCommentsID, v.ID)
+	}
+}
+
+func (m *Comments) FromIG(c *goinsta.Comments) {
+    m.CommentCount = c.CommentCount
+    m.CaptionIsEdited = c.CaptionIsEdited
+    m.HasMoreComments = c.HasMoreComments
+    m.HasMoreHeadloadComments = c.HasMoreHeadloadComments
+    m.ThreadingEnabled = c.ThreadingEnabled
+    m.MediaHeaderDisplay = c.MediaHeaderDisplay
+    m.InitiateAtTop = c.InitiateAtTop
+    m.InsertNewCommentToTop = c.InsertNewCommentToTop
+    m.NextID = c.NextID
+    m.CommentLikesEnabled = c.CommentLikesEnabled
+    m.DisplayRealtimeTypingIndicator = c.DisplayRealtimeTypingIndicator
+    m.Status = c.Status
+
+	var ca Caption
+	ca.FromIG(&c.Caption)
+	m.Caption = ca
+
+	var co Comment
+	for c.Next() {
+		for _, v := range c.Items {
+			co.FromIG(&v)
+			m.Items = append(m.Items, co)
+		}
+	}
+
+	for _, v := range c.PreviewComments {
+		co.FromIG(&v)
+		m.PreviewComments = append(m.PreviewComments, co)
+	}
+
 }
 
 func (m *Item) FromIG(i *goinsta.Item) {
@@ -309,5 +413,9 @@ func (m *Item) FromIG(i *goinsta.Item) {
 		i.FromIG(&v)
 		m.Videos = append(m.Videos, i)
 	}
+
+	var c Comments
+	c.FromIG(i.Comments)
+	m.Comments = c
 
 }

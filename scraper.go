@@ -97,6 +97,8 @@ func scrapeItem(item *goinsta.Item, cooldown time.Duration) *models.Item {
 		time.Sleep(cooldown)
 	}
 
+	item.Comments.Sync()
+
 	data.FromIG(item)
 
 	return &data
