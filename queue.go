@@ -69,44 +69,81 @@ func QueueMany(curr goinsta.User, users []goinsta.User, queue chan goinsta.User,
 
 // Load queued users from the database and send them into the queue channel
 func QueueNext(queue chan goinsta.User, d *mongo.Database,
-	insta *goinsta.Instagram, cooldown time.Duration) {
+	insta *goinsta.Instagram, exit chan bool) {
 
 	collection := d.Collection("queue")
 	ctx := context.Background()
 	findOpts := options.Find().SetSort(bsonx.Doc{{"at", bsonx.Int32(1)}})
 	deleteOpts := options.Delete()
 
-	cur, err := collection.Find(ctx, nil, findOpts)
-	defer cur.Close(ctx)
+	for {
+		cur, err := collection.Find(ctx, nil, findOpts)
+		defer cur.Close(ctx)
 
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	var (
-		q Queued
-		u goinsta.User
-	)
-
-	for cur.Next(ctx) {
-		if err := cur.Decode(&q); err != nil {
+		if err != nil {
 			log.Fatal(err)
 		}
 
-		collection.DeleteOne(ctx, bsonx.Doc{{"_id", bsonx.Int64(q.ID)}}, deleteOpts)
+		var (
+			q Queued
+			u goinsta.User
+		)
 
-		u = q.User
-		u.SetInstagram(insta)
+		for cur.Next(ctx) {
+			log.Warn("Cur traverse")
+			select {
+			case _ = <-exit:
+				return
+			}
 
-		if !checkUser(d, u.Username) {
-			log.Debug("Queuing user from database: ", u.Username)
-			queue <- u
-		} else {
-			log.Debug("Not requeueing user from database: ", u.Username)
+			if err := cur.Decode(&q); err != nil {
+				log.Fatal(err)
+			}
+
+			collection.DeleteOne(ctx, bsonx.Doc{{"_id", bsonx.Int64(q.ID)}}, deleteOpts)
+
+			u = q.User
+			u.SetInstagram(insta)
+
+			if !checkUser(d, u.Username) {
+				log.Debug("Queuing user from database: ", u.Username)
+				queue <- u
+			} else {
+				log.Debug("Not requeueing user from database: ", u.Username)
+			}
 		}
-	}
 
-	if err := cur.Err(); err != nil {
-		log.Fatal(err)
+		if err := cur.Err(); err != nil {
+			log.Fatal(err)
+		}
+
+		cur.Close(ctx)
+	}
+}
+
+// Dump the remaining in-memory queue to the database
+func QueueDump(queue chan goinsta.User, d *mongo.Database) {
+	for {
+		select {
+		case user := <-queue:
+			var q Queued
+			q.ID = user.ID
+			q.At = time.Unix(0, 0)
+			q.User = user
+
+			b, err := bson.Marshal(q)
+			if err != nil {
+				log.Warn(err)
+			}
+
+			_, err = d.Collection("queue").InsertOne(context.Background(), b)
+			log.Debug("Dumped queued user to datbase: ", user.Username)
+
+			if err != nil && !isDuplicateError(err) {
+				log.Warn(err)
+			}
+		default:
+			return
+		}
 	}
 }

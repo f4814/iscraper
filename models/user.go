@@ -11,7 +11,7 @@ type User struct {
 	Email                      string         `bson:"email"`
 	PhoneNumber                string         `bson:"phone_number"`
 	IsBusiness                 bool           `bson:"is_business"`
-	Gender                     int            `bson:"gender"` // XXX WHAT
+	Gender                     int            `bson:"gender"`
 	ProfilePicID               string         `bson:"profile_pic_id"`
 	HasAnonymousProfilePicture bool           `bson:"has_anonymous_profile_picture"`
 	IsPrivate                  bool           `bson:"is_private"`

@@ -314,8 +314,6 @@ func (m *Comments) FromIG(c *goinsta.Comments) {
 }
 
 func (m *Item) FromIG(i *goinsta.Item) {
-	// Comments *Comments `bson:"comments"` // XXX
-
 	m.TakenAt = i.TakenAt
 	m.Pk = i.Pk
 	m.ID = i.ID
@@ -382,7 +380,6 @@ func (m *Item) FromIG(i *goinsta.Item) {
 	m.SupportsReelReactions = i.SupportsReelReactions
 	m.ShowOneTapFbShareTooltip = i.ShowOneTapFbShareTooltip
 	m.HasSharedToFb = i.HasSharedToFb
-	// Mentions                 []Mentions // XXX
 
 	for _, u := range i.Likers {
 		m.Likers = append(m.Likers, u.ID)

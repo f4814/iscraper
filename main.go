@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"os"
+	"os/signal"
 	"sync"
 	"time"
 
@@ -29,6 +30,7 @@ func main() {
 	// Parse CLI Flags
 	kingpin.Parse()
 
+	// Setup Logging
 	if *debug {
 		log.SetReportCaller(true)
 	}
@@ -43,7 +45,6 @@ func main() {
 	client, err := mongo.NewClient(*mongodb)
 	if err != nil {
 		log.Fatal("Failed to connect to MongoDB: ", err)
-		os.Exit(1)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
@@ -51,7 +52,6 @@ func main() {
 	err = client.Connect(ctx)
 	if err != nil {
 		log.Fatal("Failed to connect to MongoDB: ", err)
-		os.Exit(1)
 	}
 
 	dat := client.Database(*database)
@@ -61,7 +61,6 @@ func main() {
 	insta := goinsta.New(*username, *password)
 	if err := insta.Login(); err != nil {
 		log.Fatal("Failed to authenticate with instagram: ", err)
-		os.Exit(1)
 	}
 	log.Info("Authenticated as ", *username)
 
@@ -76,26 +75,46 @@ func main() {
 	cooldownParsed, err := time.ParseDuration(*cooldown)
 	if err != nil {
 		log.Fatal("Unable to parse cooldown time: ", err)
-		os.Exit(1)
 	}
 
 	// Initialize workers
 	queue := make(chan goinsta.User, *bufferSize)
+	exit := make(chan bool, *workers + 1)
 	var wg sync.WaitGroup
 
 	for i := 0; i < *workers; i++ {
 		wg.Add(1)
 		log.Debug("Starting worker (", i, ")")
-		go Scrape(&wg, dat, queue, cooldownParsed)
+		go func() {
+			defer wg.Done()
+			Scrape(dat, queue, exit, cooldownParsed)
+			log.Warn("Stopped Worker")
+		}()
 	}
+
+	// Start Queue
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		QueueNext(queue, dat, insta, exit)
+		log.Warn("Stopped Queue")
+	}()
 
 	queue <- *rootUser
 
-	go func() {
-		for {
-			QueueNext(queue, dat, insta, cooldownParsed)
-		}
-	}()
+	// Handle interrupt
+	signalChan := make(chan os.Signal, 1)
+	signal.Notify(signalChan, os.Interrupt)
 
+	<-signalChan
+	log.Warn("Received interrupt, dumping queue and stopping workers...")
+
+	// Stop worker threads
+	for i := 0; i <= *workers; i++ { // XXX UGLY AF
+		exit <- true
+	}
 	wg.Wait()
+
+	// Dump channel
+	QueueDump(queue, dat)
 }

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"sync"
 	"time"
 
 	"github.com/ahmdrz/goinsta"
@@ -10,16 +9,19 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func Scrape(wg *sync.WaitGroup, d *mongo.Database, queue chan goinsta.User,
+func Scrape(d *mongo.Database, queue chan goinsta.User, exit chan bool,
 	cooldown time.Duration) {
 
-	defer wg.Done()
-
 	for {
+		select {
+		case _ = <-exit:
+			return
+		default:
+		}
+
 		user, more := <-queue
 
 		if !more {
-			log.Debug("Closed channel, stopping worker")
 			return
 		}
 
