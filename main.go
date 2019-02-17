@@ -12,12 +12,6 @@ import (
 
 func main() {
 	// Configuration
-	viper.SetDefault("databaseURL", "http://localhost:8529")
-	viper.SetDefault("database", "iscraper")
-	viper.SetDefault("authentication", false)
-	viper.SetDefault("debug", false)
-	viper.SetDefault("scrapers", 3)
-
 	viper.SetConfigName("config")
 	viper.AddConfigPath(".")
 
@@ -25,12 +19,22 @@ func main() {
 		log.Fatal("Failed to load config file: ", err)
 	}
 
+	coreConfig := NewCoreConfig(viper.GetStringMap("core"))
+	databaseConfig := NewDatabaseConfig(viper.GetStringMap("arangodb"))
+	instagramConfig := NewInstagramConfig(viper.GetStringMap("instagram"))
+	scraperConfig := NewScraperConfig(viper.GetStringMap("scraper"))
+
 	// Setup Logging
-	if viper.GetBool("debug") {
+	switch coreConfig.LogLevel {
+	case "TRACE":
 		log.SetLevel(log.TraceLevel)
-		log.SetReportCaller(false)
-	} else {
+		log.SetReportCaller(true)
+	case "DEBUG":
+		log.SetLevel(log.DebugLevel)
+	case "INFO":
 		log.SetLevel(log.InfoLevel)
+	case "WARN":
+		log.SetLevel(log.WarnLevel)
 	}
 
 	// Connect to ArangoDB
@@ -39,13 +43,14 @@ func main() {
 		httpConfig http.ConnectionConfig
 	)
 
-	if viper.GetBool("authentication") {
-		username := viper.GetString("username")
-		password := viper.GetString("password")
+	log.Info(databaseConfig.Authentication)
+	if databaseConfig.Authentication != nil {
+		username := databaseConfig.Authentication["username"]
+		password := databaseConfig.Authentication["password"]
 		dbConfig.Authentication = driver.BasicAuthentication(username, password)
 	}
 
-	httpConfig.Endpoints = []string{viper.GetString("databaseURL")}
+	httpConfig.Endpoints = databaseConfig.URL
 
 	conn, err := http.NewConnection(httpConfig)
 	dbConfig.Connection = conn
@@ -59,16 +64,19 @@ func main() {
 	}
 
 	log.WithFields(log.Fields{
-		"url": viper.GetString("databaseURL"),
+		"url": databaseConfig.URL,
 	}).Info("Connected to ArangoDB")
 
 	// Initalize database
-	dbName := viper.GetString("database")
-	helper := NewDBHelper(client, dbName)
+	helper := NewDBHelper(client, databaseConfig.Database)
 
 	// Initialize goinsta
-	insta := goinsta.New(viper.GetString("instaUser"), viper.GetString("instaPW"))
-	insta.SetProxy("127.0.0.1:3128", true)
+	insta := goinsta.New(instagramConfig.Username, instagramConfig.Password)
+
+	if instagramConfig.Proxy != "" {
+		insta.SetProxy(instagramConfig.Proxy, true)
+	}
+
 	if err := insta.Login(); err != nil {
 		log.Fatal(err)
 	} else {
@@ -81,9 +89,13 @@ func main() {
 	var wg sync.WaitGroup
 	queue := make(chan goinsta.User, 100)
 
-	for i := 0; i < viper.GetInt("scrapers"); i++ {
-		go Scraper(queue, helper, wg)
+	for i := 0; i < scraperConfig.Scrapers; i++ {
+		config := scraperConfig
+		config.ID = 0
+
+		go Scraper(config, queue, helper, wg)
 		wg.Add(1)
+
 		log.WithFields(log.Fields{
 			"id": i,
 		}).Debug("Started Scraper")
@@ -95,7 +107,7 @@ func main() {
 	// log.Debug("Started Queue")
 
 	// Root User
-	rootUsername := viper.GetString("rootUser")
+	rootUsername := scraperConfig.RootUser
 	if rootUsername != "" {
 		root, err := insta.Profiles.ByName(rootUsername)
 		if err != nil {

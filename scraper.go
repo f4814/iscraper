@@ -10,7 +10,9 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func Scraper(queue chan goinsta.User, helper DBHelper, wg sync.WaitGroup) {
+func Scraper(config ScraperConfig, queue chan goinsta.User, helper DBHelper,
+	wg sync.WaitGroup) {
+
 	defer wg.Done()
 
 	for {
@@ -23,6 +25,7 @@ func Scraper(queue chan goinsta.User, helper DBHelper, wg sync.WaitGroup) {
 
 		log.WithFields(log.Fields{
 			"username": user.Username,
+			"id": config.ID,
 		}).Info("Scraping User")
 
 		if err := user.Sync(); err != nil {
@@ -36,6 +39,7 @@ func Scraper(queue chan goinsta.User, helper DBHelper, wg sync.WaitGroup) {
 		// Scrape Followers
 		log.WithFields(log.Fields{
 			"username": user.Username,
+			"id": config.ID,
 		}).Debug("Scraping Followers")
 		followers := user.Followers()
 		for followers.Next() {
@@ -53,6 +57,7 @@ func Scraper(queue chan goinsta.User, helper DBHelper, wg sync.WaitGroup) {
 		// Scrape following
 		log.WithFields(log.Fields{
 			"username": user.Username,
+			"id": config.ID,
 		}).Debug("Scraping following")
 		following := user.Following()
 		for following.Next() {
@@ -71,6 +76,7 @@ func Scraper(queue chan goinsta.User, helper DBHelper, wg sync.WaitGroup) {
 		// TODO: Comments
 		log.WithFields(log.Fields{
 			"username": user.Username,
+			"id": config.ID,
 		}).Debug("Scraping Feed")
 		feed := user.Feed()
 		for feed.Next() {
