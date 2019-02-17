@@ -3,105 +3,98 @@ package main
 import (
 	"time"
 
-	"github.com/ahmdrz/goinsta"
+	"sync"
+
+	"github.com/ahmdrz/goinsta/v2"
 	"github.com/f4814/iscraper/models"
-	"github.com/mongodb/mongo-go-driver/mongo"
 	log "github.com/sirupsen/logrus"
 )
 
-func Scrape(d *mongo.Database, queue chan goinsta.User, exit chan bool,
-	cooldown time.Duration) {
+func Scraper(queue chan goinsta.User, helper DBHelper, wg sync.WaitGroup) {
+	defer wg.Done()
 
 	for {
-		select {
-		case _ = <-exit:
-			return
-		default:
-		}
-
 		user, more := <-queue
 
 		if !more {
+			log.Info("Queue Closed. Stopping Scraper")
 			return
 		}
 
-		if checkUser(d, user.Username) {
-			log.Debug("Not rescraping user: ", user.Username, " (", len(queue), ")")
-			continue
+		log.WithFields(log.Fields{
+			"username": user.Username,
+		}).Info("Scraping User")
+
+		if err := user.Sync(); err != nil {
+			log.Warn(err)
 		}
 
-		scraped := scrapeUser(&user, cooldown)
-		feed := user.Feed()
-		saveUser(d, *scraped)
+		modelUser := models.NewUser(user)
+		modelUser.ScrapedAt = time.Now()
+		helper.SaveUser(modelUser)
 
-		log.Info("Scraping user items: ", scraped.Username)
-		for feed.Next() {
-			for _, i := range feed.Items {
-				item := scrapeItem(&i, cooldown)
-				saveItem(d, item)
+		// Scrape Followers
+		log.WithFields(log.Fields{
+			"username": user.Username,
+		}).Debug("Scraping Followers")
+		followers := user.Followers()
+		for followers.Next() {
+			if err := followers.Error(); err != nil {
+				log.Warn(err)
+			}
+
+			for _, follower := range followers.Users {
+				modelFollower := models.NewUser(follower)
+				helper.SaveUser(modelFollower)
+				helper.UserFollowed(modelUser, modelFollower)
 			}
 		}
 
-		toQueue := append(scraped.FollowingStructs, scraped.FollowerStructs...)
+		// Scrape following
+		log.WithFields(log.Fields{
+			"username": user.Username,
+		}).Debug("Scraping following")
+		following := user.Following()
+		for following.Next() {
+			if err := following.Error(); err != nil {
+				log.Warn(err)
+			}
 
-		if err := QueueMany(user, toQueue, queue, d); err != nil {
-			log.Fatal("Failed to Queue user: ", err)
-		}
-	}
-}
-
-// Scrape a goinsta.User into a models.User
-func scrapeUser(user *goinsta.User, cooldown time.Duration) *models.User {
-	var data models.User
-
-	log.Info("Scraping user: ", user.Username)
-
-	for {
-		if err := user.Sync(); err == nil {
-			break
+			for _, follows := range following.Users {
+				modelFollows := models.NewUser(follows)
+				helper.SaveUser(modelFollows)
+				helper.UserFollows(modelUser, modelFollows)
+			}
 		}
 
-		log.Warn("Blocked by API, cooling down worker for ", cooldown, " seconds")
-		time.Sleep(cooldown)
-	}
+		// Scrape user feed
+		// TODO: Comments
+		log.WithFields(log.Fields{
+			"username": user.Username,
+		}).Debug("Scraping Feed")
+		feed := user.Feed()
+		for feed.Next() {
+			if err := feed.Error(); err != nil {
+				log.Warn(err)
+			}
 
-	data.FromIG(user)
-	followers := user.Followers()
-	following := user.Following()
+			for _, item := range feed.Items {
+				if err := item.SyncLikers(); err != nil {
+					log.Warn(err)
+				}
 
-	for followers.Next() {
-		for _, v := range followers.Users {
-			data.Followers = append(data.Followers, v.ID)
-			data.FollowerStructs = append(data.FollowerStructs, v)
-		}
-	}
+				itemModel := models.NewItem(item)
+				helper.SaveItem(itemModel)
+				helper.UserPosts(modelUser, itemModel)
 
-	for following.Next() {
-		for _, v := range following.Users {
-			data.Following = append(data.Following, v.ID)
-			data.FollowingStructs = append(data.FollowingStructs, v)
-		}
-	}
-
-	return &data
-}
-
-// Scrape a goinsta.Item into a models.User
-func scrapeItem(item *goinsta.Item, cooldown time.Duration) *models.Item {
-	var data models.Item
-
-	for {
-		if err := item.SyncLikers(); err == nil {
-			break
+				for _, liker := range item.Likers {
+					likerModel := models.NewUser(liker)
+					helper.SaveUser(likerModel)
+					helper.UserLikes(likerModel, itemModel)
+				}
+			}
 		}
 
-		log.Warn("Blocked by API, cooling down worker for ", cooldown, " seconds")
-		time.Sleep(cooldown)
+		// TODO: Stories
 	}
-
-	item.Comments.Sync()
-
-	data.FromIG(item)
-
-	return &data
 }

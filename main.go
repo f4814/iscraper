@@ -1,120 +1,115 @@
 package main
 
 import (
-	"context"
-	"os"
-	"os/signal"
 	"sync"
-	"time"
 
-	"github.com/ahmdrz/goinsta"
-	"github.com/mongodb/mongo-go-driver/mongo"
+	"github.com/ahmdrz/goinsta/v2"
+	driver "github.com/arangodb/go-driver"
+	"github.com/arangodb/go-driver/http"
 	log "github.com/sirupsen/logrus"
-	kingpin "gopkg.in/alecthomas/kingpin.v2"
-)
-
-var (
-	verbose    = kingpin.Flag("verbose", "Verbose mode.").Short('v').Bool()
-	username   = kingpin.Flag("user", "Instagram username.").Required().String()
-	password   = kingpin.Flag("password", "Instagram password.").Required().String()
-	mongodb    = kingpin.Flag("mongodb", "Mongodb connection.").Required().String()
-	database   = kingpin.Flag("database", "database").Required().String()
-	workers    = kingpin.Flag("workers", "Number of Workers").Required().Int()
-	root       = kingpin.Flag("root", "Root user").Required().String()
-	debug      = kingpin.Flag("debug", "Show log caller method").Bool()
-	cooldown   = kingpin.Flag("cooldown", "Cooldown on api block").Required().String()
-	bufferSize = kingpin.Flag("bufferSize", "Buffer Size").Required().Int()
+	"github.com/spf13/viper"
 )
 
 func main() {
-	// Parse CLI Flags
-	kingpin.Parse()
+	// Configuration
+	viper.SetDefault("databaseURL", "http://localhost:8529")
+	viper.SetDefault("database", "iscraper")
+	viper.SetDefault("authentication", false)
+	viper.SetDefault("debug", false)
+	viper.SetDefault("scrapers", 3)
 
-	// Setup Logging
-	if *debug {
-		log.SetReportCaller(true)
+	viper.SetConfigName("config")
+	viper.AddConfigPath(".")
+
+	if err := viper.ReadInConfig(); err != nil {
+		log.Fatal("Failed to load config file: ", err)
 	}
 
-	if *verbose {
-		log.SetLevel(log.DebugLevel)
+	// Setup Logging
+	if viper.GetBool("debug") {
+		log.SetLevel(log.TraceLevel)
+		log.SetReportCaller(false)
 	} else {
 		log.SetLevel(log.InfoLevel)
 	}
 
-	// Connect to mongodb
-	client, err := mongo.NewClient(*mongodb)
-	if err != nil {
-		log.Fatal("Failed to connect to MongoDB: ", err)
+	// Connect to ArangoDB
+	var (
+		dbConfig   driver.ClientConfig
+		httpConfig http.ConnectionConfig
+	)
+
+	if viper.GetBool("authentication") {
+		username := viper.GetString("username")
+		password := viper.GetString("password")
+		dbConfig.Authentication = driver.BasicAuthentication(username, password)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	err = client.Connect(ctx)
+	httpConfig.Endpoints = []string{viper.GetString("databaseURL")}
+
+	conn, err := http.NewConnection(httpConfig)
+	dbConfig.Connection = conn
 	if err != nil {
-		log.Fatal("Failed to connect to MongoDB: ", err)
+		log.Fatal(err)
 	}
 
-	dat := client.Database(*database)
-	log.Info("Connected to mongodb on ", *mongodb)
+	client, err := driver.NewClient(dbConfig)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	// Authenticate
-	insta := goinsta.New(*username, *password)
+	log.WithFields(log.Fields{
+		"url": viper.GetString("databaseURL"),
+	}).Info("Connected to ArangoDB")
+
+	// Initalize database
+	dbName := viper.GetString("database")
+	helper := NewDBHelper(client, dbName)
+
+	// Initialize goinsta
+	insta := goinsta.New(viper.GetString("instaUser"), viper.GetString("instaPW"))
+	insta.SetProxy("127.0.0.1:3128", true)
 	if err := insta.Login(); err != nil {
-		log.Fatal("Failed to authenticate with instagram: ", err)
-	}
-	log.Info("Authenticated as ", *username)
-
-	// Get root user
-	rootUser, err := insta.Profiles.ByName(*root)
-	if err != nil {
-		log.Fatal("Failed to find root user: ", err)
-	}
-	log.Info("Loaded root user: ", rootUser.Username)
-
-	// Parse cooldown
-	cooldownParsed, err := time.ParseDuration(*cooldown)
-	if err != nil {
-		log.Fatal("Unable to parse cooldown time: ", err)
+		log.Fatal(err)
+	} else {
+		log.WithFields(log.Fields{
+			"username": viper.GetString("instaUser"),
+		}).Info("Authenticated at Instagram")
 	}
 
-	// Initialize workers
-	queue := make(chan goinsta.User, *bufferSize)
-	exit := make(chan bool, *workers + 1)
+	// Start Scrapers
 	var wg sync.WaitGroup
+	queue := make(chan goinsta.User, 100)
 
-	for i := 0; i < *workers; i++ {
+	for i := 0; i < viper.GetInt("scrapers"); i++ {
+		go Scraper(queue, helper, wg)
 		wg.Add(1)
-		log.Debug("Starting worker (", i, ")")
-		go func() {
-			defer wg.Done()
-			Scrape(dat, queue, exit, cooldownParsed)
-			log.Warn("Stopped Worker")
-		}()
+		log.WithFields(log.Fields{
+			"id": i,
+		}).Debug("Started Scraper")
 	}
 
-	// Start Queue
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		QueueNext(queue, dat, insta, exit)
-		log.Warn("Stopped Queue")
-	}()
+	// Start queue
+	// go Queue(queue, helper, wg)
+	// wg.Add(1)
+	// log.Debug("Started Queue")
 
-	queue <- *rootUser
-
-	// Handle interrupt
-	signalChan := make(chan os.Signal, 1)
-	signal.Notify(signalChan, os.Interrupt)
-
-	<-signalChan
-	log.Warn("Received interrupt, dumping queue and stopping workers...")
-
-	// Stop worker threads
-	for i := 0; i <= *workers; i++ { // XXX UGLY AF
-		exit <- true
+	// Root User
+	rootUsername := viper.GetString("rootUser")
+	if rootUsername != "" {
+		root, err := insta.Profiles.ByName(rootUsername)
+		if err != nil {
+			log.Warn(err)
+		} else {
+			log.WithFields(log.Fields{
+				"username": rootUsername,
+			}).Info("Loaded root user")
+			queue <- *root
+		}
+	} else {
+		log.Debug("No root user specified. Conitinuing with queue from db")
 	}
+
+	log.Info("Startup Finished")
 	wg.Wait()
-
-	// Dump channel
-	QueueDump(queue, dat)
 }

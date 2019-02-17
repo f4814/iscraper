@@ -1,95 +1,411 @@
 package main
 
 import (
-	"context"
+	"fmt"
 
+	driver "github.com/arangodb/go-driver"
 	"github.com/f4814/iscraper/models"
-	"github.com/mongodb/mongo-go-driver/bson"
-	"github.com/mongodb/mongo-go-driver/mongo"
 	log "github.com/sirupsen/logrus"
 )
 
-// Save a models.User
-func saveUser(d *mongo.Database, user models.User) error {
-	user.FollowerStructs = nil
-	user.FollowingStructs = nil
+type DBHelper struct {
+	Client driver.Client
+	DB     driver.Database
 
-	if err := writeBSON(d, "users", user); err != nil {
-		if isDuplicateError(err) {
-			log.Warn("Failed to add duplicate user: ", user.Username)
-		} else {
+	GraphOptions driver.CreateGraphOptions
+	Graph        driver.Graph
+
+	Users    driver.Collection
+	Items    driver.Collection
+	Comments driver.Collection
+
+	EdgeLikes   driver.Collection
+	EdgeTags    driver.Collection
+	EdgeChild   driver.Collection
+	EdgeFollows driver.Collection
+	EdgePosts   driver.Collection
+}
+
+func NewDBHelper(client driver.Client, dbName string) DBHelper {
+	h := DBHelper{Client: client}
+
+	var err error
+
+	// Initialize Database
+	var db driver.Database
+	if b, err := client.DatabaseExists(nil, dbName); err != nil {
+		log.Fatal(err)
+	} else if b == false {
+		log.WithFields(log.Fields{"database": dbName}).Debug("Creating new Database")
+		db, err = client.CreateDatabase(nil, dbName, nil)
+	} else {
+		log.WithFields(log.Fields{"database": dbName}).Debug("Loading existing Database")
+		db, err = client.Database(nil, dbName)
+	}
+
+	if err != nil {
+		log.Fatal(err)
+	}
+	h.DB = db
+
+	// Initialize Graph
+	var graph driver.Graph
+	if b, err := h.DB.GraphExists(nil, "instagram"); err != nil {
+		log.Fatal(err)
+	} else if b == false {
+		log.WithFields(log.Fields{
+			"database": dbName,
+			"graph":    "instagram",
+		}).Debug("Creating new Graph")
+		graph, err = h.DB.CreateGraph(nil, "instagram", nil) // TODO Opts
+	} else {
+		log.WithFields(log.Fields{
+			"database": dbName,
+			"graph":    "instagram",
+		}).Debug("Loading Existing graph")
+		graph, err = h.DB.Graph(nil, "instagram")
+	}
+
+	if err != nil {
+		log.Fatal(err)
+	}
+	h.Graph = graph
+
+	// Get Edge and vertex collections
+	h.Users = h.initVertex("users")
+	h.Items = h.initVertex("items")
+	h.Comments = h.initVertex("comments")
+
+	h.EdgeLikes = h.initEdge("edge_likes")
+	h.EdgeTags = h.initEdge("edge_tags")
+	h.EdgeChild = h.initEdge("edge_child")
+	h.EdgeFollows = h.initEdge("edge_follows")
+	h.EdgePosts = h.initEdge("edge_posts")
+
+	// Initialize Indexes
+	uniqueOpts := driver.EnsureHashIndexOptions{Unique: true}
+	h.initHashIndex(h.Users, []string{"id", "username"}, &uniqueOpts)
+	h.initHashIndex(h.Items, []string{"id"}, &uniqueOpts)
+	h.initHashIndex(h.Comments, []string{"id", "pk"}, &uniqueOpts)
+	h.initHashIndex(h.EdgeLikes, []string{"_from", "_to"}, &uniqueOpts)
+	h.initHashIndex(h.EdgePosts, []string{"_from", "_to"}, &uniqueOpts)
+	h.initHashIndex(h.EdgeFollows, []string{"_from", "_to"}, &uniqueOpts)
+	h.initHashIndex(h.EdgeTags, []string{"_from", "_to"}, &uniqueOpts)
+	h.initHashIndex(h.EdgeChild, []string{"_from", "_to"}, &uniqueOpts)
+
+	return h
+}
+
+func (h *DBHelper) initVertex(name string) driver.Collection {
+	var (
+		c   driver.Collection
+		err error
+	)
+
+	if b, err := h.Graph.VertexCollectionExists(nil, name); err != nil {
+		log.Fatal(err)
+	} else if b == false {
+		log.WithFields(log.Fields{
+			"database":   h.DB.Name(),
+			"graph":      h.Graph.Name(),
+			"collection": name,
+		}).Debug("Creating new Vertex Collection")
+		c, err = h.Graph.CreateVertexCollection(nil, name)
+	} else {
+		log.WithFields(log.Fields{
+			"database":   h.DB.Name(),
+			"graph":      h.Graph.Name(),
+			"collection": name,
+		}).Debug("Loading existing Vertex Collection")
+		c, err = h.Graph.VertexCollection(nil, name)
+	}
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return c
+
+}
+
+func (h *DBHelper) initEdge(name string) driver.Collection {
+	defs := []driver.EdgeDefinition{
+		driver.EdgeDefinition{
+			Collection: "edge_likes",
+			From:       []string{"users"},
+			To:         []string{"users"},
+		},
+		driver.EdgeDefinition{
+			Collection: "edge_tags",
+			From:       []string{"items"},
+			To:         []string{"users"},
+		},
+		driver.EdgeDefinition{
+			Collection: "edge_child",
+			From:       []string{"items", "comments"},
+			To:         []string{"comments"},
+		},
+		driver.EdgeDefinition{
+			Collection: "edge_follows",
+			From:       []string{"users"},
+			To:         []string{"users"},
+		},
+		driver.EdgeDefinition{
+			Collection: "edge_posts",
+			From:       []string{"users"},
+			To:         []string{"items"},
+		},
+	}
+
+	var constraints driver.VertexConstraints
+	for _, d := range defs {
+		if d.Collection == name {
+			constraints.From = d.From
+			constraints.To = d.To
+			break
+		}
+	}
+
+	var (
+		err error
+		c   driver.Collection
+	)
+	if b, err := h.Graph.EdgeCollectionExists(nil, name); err != nil {
+		log.Fatal(err)
+	} else if b == false {
+		log.WithFields(log.Fields{
+			"database":   h.DB.Name(),
+			"graph":      h.Graph.Name(),
+			"collection": name,
+		}).Debug("Creating new Edge Collection")
+		c, err = h.Graph.CreateEdgeCollection(nil, name, constraints)
+	} else {
+		log.WithFields(log.Fields{
+			"database":   h.DB.Name(),
+			"graph":      h.Graph.Name(),
+			"collection": name,
+		}).Debug("Loading existing Edge Collection")
+		c, _, err = h.Graph.EdgeCollection(nil, name)
+	}
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return c
+}
+
+func (h *DBHelper) initHashIndex(coll driver.Collection, fields []string,
+	opts *driver.EnsureHashIndexOptions) {
+	_, n, err := coll.EnsureHashIndex(nil, fields, opts)
+	if err != nil {
+		log.Fatal(err)
+	} else if n {
+		log.WithFields(log.Fields{
+			"database":   h.DB.Name(),
+			"collection": coll.Name(),
+			"fields":     fields,
+			"opts":       opts,
+		}).Debug("Created new Hash Index")
+	} else {
+		log.WithFields(log.Fields{
+			"database":   h.DB.Name(),
+			"collection": coll.Name(),
+			"fields":     fields,
+			"opts":       opts,
+		}).Debug("Loaded existing Hash Index")
+	}
+}
+
+func (h *DBHelper) SaveUser(user *models.User) {
+	query := fmt.Sprintf("FOR u IN users FILTER u.id == %d RETURN u", user.ID)
+	cur, err := h.DB.Query(nil, query, nil)
+	defer cur.Close()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	var (
+		meta driver.DocumentMeta
+		msg string
+	)
+	if cur.HasMore() {
+		meta, err = cur.ReadDocument(nil, &models.User{})
+		msg = "Loaded User Metadata"
+	} else {
+		meta, err = h.Users.CreateDocument(nil, *user)
+		msg = "Saved user"
+	}
+
+	if err != nil {
+		log.Fatal(err)
+	}
+	user.SetMeta(meta)
+
+	log.WithFields(log.Fields{
+		"username": user.Username,
+	}).Trace(msg)
+}
+
+func (h *DBHelper) SaveItem(item *models.Item) {
+	query := fmt.Sprintf("FOR i IN items FILTER i.id == '%s' RETURN i", item.ID)
+	cur, err := h.DB.Query(nil, query, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer cur.Close()
+
+	var (
+		meta driver.DocumentMeta
+		msg string
+	)
+	if cur.HasMore() {
+		meta, err = cur.ReadDocument(nil, &models.Item{})
+		msg = "Loaded item Metadata"
+	} else {
+		meta, err = h.Items.CreateDocument(nil, *item)
+		msg = "Saved Item"
+	}
+
+	if err != nil {
+		log.Fatal(err)
+	}
+	item.SetMeta(meta)
+
+	log.WithFields(log.Fields{
+		"id": item.ID,
+	}).Trace(msg)
+}
+
+func (h *DBHelper) UserFollows(user *models.User, follows *models.User) {
+	query := "FOR e IN edge_follows FILTER e._from == @from && e._to == @to RETURN e"
+	cur, err := h.DB.Query(nil, query,
+		map[string]interface{}{
+			"from": user.GetMeta().ID,
+			"to": follows.GetMeta().ID,
+		},
+	)
+	defer cur.Close()
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if !cur.HasMore() {
+		edge := models.Follows{
+			From: string(user.GetMeta().ID),
+			To:   string(follows.GetMeta().ID),
+		}
+
+		if _, err := h.EdgeFollows.CreateDocument(nil, edge); err != nil {
 			log.Fatal(err)
 		}
+
+		log.WithFields(log.Fields{
+			"username": user.Username,
+			"follows":  follows.Username,
+			"edge":     edge,
+		}).Trace("Add Follow Edge")
 	}
-
-	log.Debug("Added User: ", user.Username)
-
-	return nil
 }
 
-// Save a models.Item
-func saveItem(d *mongo.Database, item *models.Item) error {
-	if err := writeBSON(d, "items", item); err != nil {
-		if isDuplicateError(err) {
-			log.Warn("Failed to add duplicate item")
-		} else {
+func (h *DBHelper) UserFollowed(user *models.User, followed *models.User) {
+	h.UserFollows(followed, user)
+}
+
+func (h *DBHelper) UserPosts(user *models.User, item *models.Item) {
+	query := "FOR e IN edge_posts FILTER e._from == @from && e._to == @to RETURN e"
+	cur, err := h.DB.Query(nil, query,
+		map[string]interface{}{
+			"from": user.GetMeta().ID,
+			"to": item.GetMeta().ID,
+		},
+	)
+	defer cur.Close()
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if !cur.HasMore() {
+		edge := models.Posts{
+			From: string(user.GetMeta().ID),
+			To:   string(item.GetMeta().ID),
+		}
+
+		if _, err := h.EdgePosts.CreateDocument(nil, edge); err != nil {
 			log.Fatal(err)
 		}
+
+		log.WithFields(log.Fields{
+			"username": user.Username,
+			"item":    item.ID,
+			"edge":     edge,
+		}).Trace("Add Posts edge")
 	}
-
-	log.Debug("Added Item: ", item.ID)
-
-	return nil
 }
 
-// Checks whether the given user already exists
-func checkUser(d *mongo.Database, username string) bool {
-	filter := bson.D{{"username", username}}
-	res := d.Collection("users").FindOne(context.Background(), filter)
-
-	var u models.User
-	err := res.Decode(&u)
-
-	if err != nil {
-		return false
-	}
-
-	if u.Username == username {
-		return true
-	}
-
-	return false
-}
-
-// Writes a BSON struct to a collection
-func writeBSON(d *mongo.Database, collection string, val interface{}) error {
-	b, err := bson.Marshal(val)
-	if err != nil {
-		log.Warn(err)
-		return err
-	}
-
-	_, err = d.Collection(collection).InsertOne(context.Background(), b)
+func (h *DBHelper) UserLikes(user *models.User, item *models.Item) {
+	query := "FOR e IN edge_likes FILTER e._from == @from && e._to == @to RETURN e"
+	cur, err := h.DB.Query(nil, query,
+		map[string]interface{}{
+			"from": user.GetMeta().ID,
+			"to": item.GetMeta().ID,
+		},
+	)
+	defer cur.Close()
 
 	if err != nil {
-		return err
+		log.Fatal(err)
 	}
 
-	return nil
-}
-
-// Check whether the error is an mongodb duplicate error
-func isDuplicateError(err error) bool {
-	// Do not return duplicate key errors
-	switch t := err.(type) {
-	default:
-		return false
-	case mongo.WriteErrors:
-		for _, e := range t {
-			if e.Code != 11000 {
-				return false
-			}
+	if !cur.HasMore() {
+		edge := models.Likes{
+			From:       string(user.GetMeta().ID),
+			To:         string(item.GetMeta().ID),
+			IsTopliker: false,
 		}
+
+		if _, err := h.EdgeLikes.CreateDocument(nil, edge); err != nil {
+			log.Fatal(err)
+		}
+
+		log.WithFields(log.Fields{
+			"username": user.Username,
+			"item":     item.ID,
+			"edge":     edge,
+		}).Trace("Add Likes edge")
 	}
-	return true
+}
+
+func (h *DBHelper) ItemTags(item *models.Item, user *models.User) {
+	query := "FOR e IN edge_tags FITLER e._from == @from && e._to == @to RETURN e"
+	cur, err := h.DB.Query(nil, query,
+		map[string]interface{}{
+			"from": item.GetMeta().ID,
+			"to": user.GetMeta().ID,
+		},
+	)
+	defer cur.Close()
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if !cur.HasMore() {
+		edge := models.Tags{
+			From: string(item.GetMeta().ID),
+			To:   string(user.GetMeta().ID),
+		}
+
+		if _, err := h.EdgeTags.CreateDocument(nil, edge); err != nil {
+			log.Fatal(err)
+		}
+
+		log.WithFields(log.Fields{
+			"username": user.Username,
+			"item":     item.ID,
+			"edge":     edge,
+		}).Trace("Add Tags edge")
+	}
 }
