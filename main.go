@@ -81,7 +81,7 @@ func main() {
 		log.Fatal(err)
 	} else {
 		log.WithFields(log.Fields{
-			"username": viper.GetString("instaUser"),
+			"username": instagramConfig.Username,
 		}).Info("Authenticated at Instagram")
 	}
 

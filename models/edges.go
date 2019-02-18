@@ -22,6 +22,7 @@ type Tags struct {
 	From string `json:"_from"`
 	To   string `json:"_to"`
 	// TODO FB Tags
+	// TODO Coordinates
 }
 
 type Mentions struct {

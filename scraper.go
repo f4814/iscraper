@@ -25,11 +25,14 @@ func Scraper(config ScraperConfig, queue chan goinsta.User, helper DBHelper,
 
 		log.WithFields(log.Fields{
 			"username": user.Username,
-			"id": config.ID,
+			"scraper":  config.ID,
 		}).Info("Scraping User")
 
 		if err := user.Sync(); err != nil {
-			log.Warn(err)
+			log.WithFields(log.Fields{
+				"username": user.Username,
+				"scraper":  config.ID,
+			}).Warn(err)
 		}
 
 		modelUser := models.NewUser(user)
@@ -39,68 +42,90 @@ func Scraper(config ScraperConfig, queue chan goinsta.User, helper DBHelper,
 		// Scrape Followers
 		log.WithFields(log.Fields{
 			"username": user.Username,
-			"id": config.ID,
+			"scraper":  config.ID,
 		}).Debug("Scraping Followers")
 		followers := user.Followers()
-		for followers.Next() {
-			if err := followers.Error(); err != nil {
-				log.Warn(err)
-			}
-
-			for _, follower := range followers.Users {
-				modelFollower := models.NewUser(follower)
-				helper.SaveUser(modelFollower)
-				helper.UserFollowed(modelUser, modelFollower)
-			}
-		}
+		scrapeUsers(modelUser, followers, helper, helper.UserFollowed)
 
 		// Scrape following
 		log.WithFields(log.Fields{
 			"username": user.Username,
-			"id": config.ID,
+			"scraper":  config.ID,
 		}).Debug("Scraping following")
 		following := user.Following()
-		for following.Next() {
-			if err := following.Error(); err != nil {
-				log.Warn(err)
-			}
-
-			for _, follows := range following.Users {
-				modelFollows := models.NewUser(follows)
-				helper.SaveUser(modelFollows)
-				helper.UserFollows(modelUser, modelFollows)
-			}
-		}
+		scrapeUsers(modelUser, following, helper, helper.UserFollows)
 
 		// Scrape user feed
-		// TODO: Comments
 		log.WithFields(log.Fields{
 			"username": user.Username,
-			"id": config.ID,
+			"scraper":  config.ID,
 		}).Debug("Scraping Feed")
 		feed := user.Feed()
-		for feed.Next() {
-			if err := feed.Error(); err != nil {
+		scrapeFeedMedia(modelUser, feed, helper, helper.UserPosts)
+
+		// Scrape Media user is Tagged in
+		log.WithFields(log.Fields{
+			"username": user.Username,
+			"scraper":  config.ID,
+		}).Debug("Scraping Media tagging user")
+		if tags, err := user.Tags(nil); err != nil {
+			log.WithFields(log.Fields{
+				"username": user.Username,
+				"scraper":  config.ID,
+			}).Warn(err)
+		} else {
+			scrapeFeedMedia(modelUser, tags, helper, helper.UserTagged)
+		}
+
+		// TODO Stories, Highlights
+	}
+}
+
+func scrapeFeedMedia(user *models.User, media *goinsta.FeedMedia,
+	helper DBHelper, relation func(*models.User, *models.Item)) {
+
+	if err := media.Sync(); err != nil {
+		log.Warn(err)
+	}
+
+	for media.Next() {
+		if err := media.Error(); err != nil {
+			log.Warn(err)
+		}
+
+		for _, item := range media.Items {
+			if err := item.SyncLikers(); err != nil {
 				log.Warn(err)
 			}
 
-			for _, item := range feed.Items {
-				if err := item.SyncLikers(); err != nil {
-					log.Warn(err)
-				}
+			itemModel := models.NewItem(item)
+			helper.SaveItem(itemModel)
+			relation(user, itemModel)
 
-				itemModel := models.NewItem(item)
-				helper.SaveItem(itemModel)
-				helper.UserPosts(modelUser, itemModel)
+			// TODO Item tags
+			// TODO: Comments
 
-				for _, liker := range item.Likers {
-					likerModel := models.NewUser(liker)
-					helper.SaveUser(likerModel)
-					helper.UserLikes(likerModel, itemModel)
-				}
+			for _, liker := range item.Likers {
+				likerModel := models.NewUser(liker)
+				helper.SaveUser(likerModel)
+				helper.UserLikes(likerModel, itemModel)
 			}
 		}
+	}
+}
 
-		// TODO: Stories
+func scrapeUsers(user *models.User, users *goinsta.Users, helper DBHelper,
+	relation func(*models.User, *models.User)) {
+
+	for users.Next() {
+		if err := users.Error(); err != nil {
+			log.Warn(err)
+		}
+
+		for _, other := range users.Users {
+			modelOther := models.NewUser(other)
+			helper.SaveUser(modelOther)
+			relation(user, modelOther)
+		}
 	}
 }

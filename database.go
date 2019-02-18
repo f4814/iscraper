@@ -378,8 +378,8 @@ func (h *DBHelper) UserLikes(user *models.User, item *models.Item) {
 	}
 }
 
-func (h *DBHelper) ItemTags(item *models.Item, user *models.User) {
-	query := "FOR e IN edge_tags FITLER e._from == @from && e._to == @to RETURN e"
+func (h *DBHelper) UserTagged(user *models.User, item *models.Item) {
+	query := "FOR e IN edge_tags FILTER e._from == @from && e._to == @to RETURN e"
 	cur, err := h.DB.Query(nil, query,
 		map[string]interface{}{
 			"from": item.GetMeta().ID,
