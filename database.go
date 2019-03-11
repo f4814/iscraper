@@ -29,13 +29,18 @@ type DBHelper struct {
 func NewDBHelper(client driver.Client, dbName string) DBHelper {
 	h := DBHelper{Client: client}
 
-	var err error
+	var (
+		err    error
+		exists bool
+	)
 
 	// Initialize Database
 	var db driver.Database
-	if b, err := client.DatabaseExists(nil, dbName); err != nil {
+	if exists, err = client.DatabaseExists(nil, dbName); err != nil {
 		log.Fatal(err)
-	} else if b == false {
+	}
+
+	if !exists {
 		log.WithFields(log.Fields{"database": dbName}).Debug("Creating new Database")
 		db, err = client.CreateDatabase(nil, dbName, nil)
 	} else {
@@ -50,9 +55,11 @@ func NewDBHelper(client driver.Client, dbName string) DBHelper {
 
 	// Initialize Graph
 	var graph driver.Graph
-	if b, err := h.DB.GraphExists(nil, "instagram"); err != nil {
+	if exists, err = h.DB.GraphExists(nil, "instagram"); err != nil {
 		log.Fatal(err)
-	} else if b == false {
+	}
+
+	if !exists {
 		log.WithFields(log.Fields{
 			"database": dbName,
 			"graph":    "instagram",
@@ -98,13 +105,16 @@ func NewDBHelper(client driver.Client, dbName string) DBHelper {
 
 func (h *DBHelper) initVertex(name string) driver.Collection {
 	var (
-		c   driver.Collection
-		err error
+		c      driver.Collection
+		err    error
+		exists bool
 	)
 
-	if b, err := h.Graph.VertexCollectionExists(nil, name); err != nil {
+	if exists, err = h.Graph.VertexCollectionExists(nil, name); err != nil {
 		log.Fatal(err)
-	} else if b == false {
+	}
+
+	if !exists {
 		log.WithFields(log.Fields{
 			"database":   h.DB.Name(),
 			"graph":      h.Graph.Name(),
@@ -167,12 +177,16 @@ func (h *DBHelper) initEdge(name string) driver.Collection {
 	}
 
 	var (
-		err error
-		c   driver.Collection
+		err    error
+		c      driver.Collection
+		exists bool
 	)
-	if b, err := h.Graph.EdgeCollectionExists(nil, name); err != nil {
+
+	if exists, err = h.Graph.EdgeCollectionExists(nil, name); err != nil {
 		log.Fatal(err)
-	} else if b == false {
+	}
+
+	if !exists {
 		log.WithFields(log.Fields{
 			"database":   h.DB.Name(),
 			"graph":      h.Graph.Name(),

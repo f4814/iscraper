@@ -40,7 +40,7 @@ type Mentions struct {
 
 type Comments struct {
 	From string `json:"_from"`
-	To   string `json:"_from"`
+	To   string `json:"_to"`
 }
 
 type Child struct {

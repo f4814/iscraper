@@ -67,7 +67,7 @@ func main() {
 		"url": databaseConfig.URL,
 	}).Info("Connected to ArangoDB")
 
-	// Initalize database
+	// Initialize database
 	helper := NewDBHelper(client, databaseConfig.Database)
 
 	// Initialize goinsta
@@ -93,8 +93,8 @@ func main() {
 		config := scraperConfig
 		config.ID = i
 
-		go Scraper(config, queue, helper, wg)
 		wg.Add(1)
+		go Scraper(config, queue, helper, wg)
 
 		log.WithFields(log.Fields{
 			"id": i,
@@ -102,8 +102,8 @@ func main() {
 	}
 
 	// Start queue
-	go Queue(queue, helper, insta, wg)
 	wg.Add(1)
+	go Queue(queue, helper, insta, wg)
 	log.Debug("Started Queue")
 
 	// Root User
