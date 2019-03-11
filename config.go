@@ -9,11 +9,11 @@ type CoreConfig struct {
 }
 
 type ScraperConfig struct {
-	ID         int
-	Cooldown   time.Duration
-	Scrapers   int
-	RootUser   string
-	Scrape map[string]bool
+	ID       int
+	Cooldown time.Duration
+	Scrapers int
+	RootUser string
+	Scrape   map[string]bool
 }
 
 type DatabaseConfig struct {
@@ -66,11 +66,11 @@ func NewInstagramConfig(input map[string]interface{}) InstagramConfig {
 
 func NewScraperConfig(input map[string]interface{}) ScraperConfig {
 	duration, _ := time.ParseDuration(input["cooldown"].(string))
-	c :=  ScraperConfig{
-		ID:         0,
-		Cooldown:   duration,
-		Scrapers:   input["scrapers"].(int),
-		RootUser:   input["root_user"].(string),
+	c := ScraperConfig{
+		ID:       0,
+		Cooldown: duration,
+		Scrapers: input["scrapers"].(int),
+		RootUser: input["root_user"].(string),
 	}
 
 	c.Scrape = make(map[string]bool)

@@ -11,7 +11,7 @@ import (
 )
 
 func Scraper(config ScraperConfig, queue chan goinsta.User, helper DBHelper,
-	wg sync.WaitGroup) {
+	wg *sync.WaitGroup) {
 
 	defer wg.Done()
 	var (

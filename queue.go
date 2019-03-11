@@ -9,7 +9,7 @@ import (
 )
 
 func Queue(queue chan goinsta.User, helper DBHelper, insta *goinsta.Instagram,
-	wg sync.WaitGroup) {
+	wg *sync.WaitGroup) {
 
 	defer wg.Done()
 

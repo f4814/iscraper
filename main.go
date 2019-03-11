@@ -86,7 +86,7 @@ func main() {
 	}
 
 	// Start Scrapers
-	var wg sync.WaitGroup
+	var wg *sync.WaitGroup
 	queue := make(chan goinsta.User, 500)
 
 	for i := 0; i < scraperConfig.Scrapers; i++ {

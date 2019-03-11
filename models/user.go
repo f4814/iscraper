@@ -152,7 +152,7 @@ func NewUser(i goinsta.User) *User {
 
 func NewGoinstaUser(u *User) *goinsta.User {
 	i := goinsta.User{
-		ID: u.ID,
+		ID:       u.ID,
 		Username: u.Username,
 	}
 
