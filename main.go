@@ -87,11 +87,11 @@ func main() {
 
 	// Start Scrapers
 	var wg sync.WaitGroup
-	queue := make(chan goinsta.User, 100)
+	queue := make(chan goinsta.User, 500)
 
 	for i := 0; i < scraperConfig.Scrapers; i++ {
 		config := scraperConfig
-		config.ID = 0
+		config.ID = i
 
 		go Scraper(config, queue, helper, wg)
 		wg.Add(1)
@@ -102,9 +102,9 @@ func main() {
 	}
 
 	// Start queue
-	// go Queue(queue, helper, wg)
-	// wg.Add(1)
-	// log.Debug("Started Queue")
+	go Queue(queue, helper, insta, wg)
+	wg.Add(1)
+	log.Debug("Started Queue")
 
 	// Root User
 	rootUsername := scraperConfig.RootUser

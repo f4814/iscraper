@@ -218,8 +218,12 @@ func (h *DBHelper) initHashIndex(coll driver.Collection, fields []string,
 }
 
 func (h *DBHelper) SaveUser(user *models.User) {
-	query := fmt.Sprintf("FOR u IN users FILTER u.id == %d RETURN u", user.ID)
-	cur, err := h.DB.Query(nil, query, nil)
+	query := "FOR u IN users FILTER u.id == @id RETURN u"
+	cur, err := h.DB.Query(nil, query,
+		map[string]interface{}{
+			"id": user.ID,
+		},
+	)
 	defer cur.Close()
 	if err != nil {
 		log.Fatal(err)
@@ -227,11 +231,20 @@ func (h *DBHelper) SaveUser(user *models.User) {
 
 	var (
 		meta driver.DocumentMeta
-		msg string
+		msg  string
 	)
 	if cur.HasMore() {
-		meta, err = cur.ReadDocument(nil, &models.User{})
-		msg = "Loaded User Metadata"
+		var oldUser models.User
+		if meta, err = cur.ReadDocument(nil, &oldUser); err != nil {
+			log.Fatal(err)
+		} else {
+			if oldUser.ScrapedAt.After(user.ScrapedAt) {
+				user.ScrapedAt = oldUser.ScrapedAt
+			}
+
+			meta, err = h.Users.UpdateDocument(nil, meta.Key, *user)
+			msg = "Loaded Item Metadata"
+		}
 	} else {
 		meta, err = h.Users.CreateDocument(nil, *user)
 		msg = "Saved user"
@@ -257,11 +270,20 @@ func (h *DBHelper) SaveItem(item *models.Item) {
 
 	var (
 		meta driver.DocumentMeta
-		msg string
+		msg  string
 	)
 	if cur.HasMore() {
-		meta, err = cur.ReadDocument(nil, &models.Item{})
-		msg = "Loaded item Metadata"
+		var oldItem models.Item
+		if meta, err = cur.ReadDocument(nil, &oldItem); err != nil {
+			log.Fatal(err)
+		} else {
+			if oldItem.ScrapedAt.After(item.ScrapedAt) {
+				item.ScrapedAt = oldItem.ScrapedAt
+			}
+
+			msg = "Loaded Item Metadata"
+			meta, err = h.Items.UpdateDocument(nil, meta.Key, *item)
+		}
 	} else {
 		meta, err = h.Items.CreateDocument(nil, *item)
 		msg = "Saved Item"
@@ -282,7 +304,7 @@ func (h *DBHelper) UserFollows(user *models.User, follows *models.User) {
 	cur, err := h.DB.Query(nil, query,
 		map[string]interface{}{
 			"from": user.GetMeta().ID,
-			"to": follows.GetMeta().ID,
+			"to":   follows.GetMeta().ID,
 		},
 	)
 	defer cur.Close()
@@ -318,7 +340,7 @@ func (h *DBHelper) UserPosts(user *models.User, item *models.Item) {
 	cur, err := h.DB.Query(nil, query,
 		map[string]interface{}{
 			"from": user.GetMeta().ID,
-			"to": item.GetMeta().ID,
+			"to":   item.GetMeta().ID,
 		},
 	)
 	defer cur.Close()
@@ -339,7 +361,7 @@ func (h *DBHelper) UserPosts(user *models.User, item *models.Item) {
 
 		log.WithFields(log.Fields{
 			"username": user.Username,
-			"item":    item.ID,
+			"item":     item.ID,
 			"edge":     edge,
 		}).Trace("Add Posts edge")
 	}
@@ -350,7 +372,7 @@ func (h *DBHelper) UserLikes(user *models.User, item *models.Item) {
 	cur, err := h.DB.Query(nil, query,
 		map[string]interface{}{
 			"from": user.GetMeta().ID,
-			"to": item.GetMeta().ID,
+			"to":   item.GetMeta().ID,
 		},
 	)
 	defer cur.Close()
@@ -383,7 +405,7 @@ func (h *DBHelper) UserTagged(user *models.User, item *models.Item) {
 	cur, err := h.DB.Query(nil, query,
 		map[string]interface{}{
 			"from": item.GetMeta().ID,
-			"to": user.GetMeta().ID,
+			"to":   user.GetMeta().ID,
 		},
 	)
 	defer cur.Close()

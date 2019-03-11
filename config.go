@@ -16,15 +16,15 @@ type ScraperConfig struct {
 }
 
 type DatabaseConfig struct {
-	URL []string
+	URL            []string
 	Authentication map[string]string
-	Database string
+	Database       string
 }
 
 type InstagramConfig struct {
-	Username string
-	Password string
-	Proxy string
+	Username   string
+	Password   string
+	Proxy      string
 	CookieFile string
 }
 
@@ -56,9 +56,9 @@ func NewDatabaseConfig(input map[string]interface{}) DatabaseConfig {
 
 func NewInstagramConfig(input map[string]interface{}) InstagramConfig {
 	return InstagramConfig{
-		Username: input["username"].(string),
-		Password: input["password"].(string),
-		Proxy: input["proxy"].(string),
+		Username:   input["username"].(string),
+		Password:   input["password"].(string),
+		Proxy:      input["proxy"].(string),
 		CookieFile: input["cookie_file"].(string),
 	}
 }
@@ -66,7 +66,7 @@ func NewInstagramConfig(input map[string]interface{}) InstagramConfig {
 func NewScraperConfig(input map[string]interface{}) ScraperConfig {
 	duration, _ := time.ParseDuration(input["cooldown"].(string))
 	return ScraperConfig{
-		ID: 0,
+		ID:       0,
 		Cooldown: duration,
 		Scrapers: input["scrapers"].(int),
 		RootUser: input["root_user"].(string),

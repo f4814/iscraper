@@ -150,6 +150,15 @@ func NewUser(i goinsta.User) *User {
 	return &u
 }
 
+func NewGoinstaUser(u *User) *goinsta.User {
+	i := goinsta.User{
+		ID: u.ID,
+		Username: u.Username,
+	}
+
+	return &i
+}
+
 func (u *User) GetMeta() driver.DocumentMeta {
 	return u.meta
 }

@@ -23,16 +23,15 @@ func Scraper(config ScraperConfig, queue chan goinsta.User, helper DBHelper,
 			return
 		}
 
-		log.WithFields(log.Fields{
+		logFields := log.Fields{
 			"username": user.Username,
-			"scraper":  config.ID,
-		}).Info("Scraping User")
+			"scraper": config.ID,
+		}
+
+		log.WithFields(logFields).Info("Scraping User")
 
 		if err := user.Sync(); err != nil {
-			log.WithFields(log.Fields{
-				"username": user.Username,
-				"scraper":  config.ID,
-			}).Warn(err)
+			log.WithFields(logFields).Warn(err)
 		}
 
 		modelUser := models.NewUser(user)
@@ -40,39 +39,24 @@ func Scraper(config ScraperConfig, queue chan goinsta.User, helper DBHelper,
 		helper.SaveUser(modelUser)
 
 		// Scrape Followers
-		log.WithFields(log.Fields{
-			"username": user.Username,
-			"scraper":  config.ID,
-		}).Debug("Scraping Followers")
+		log.WithFields(logFields).Debug("Scraping Followers")
 		followers := user.Followers()
 		scrapeUsers(modelUser, followers, helper, helper.UserFollowed)
 
 		// Scrape following
-		log.WithFields(log.Fields{
-			"username": user.Username,
-			"scraper":  config.ID,
-		}).Debug("Scraping following")
+		log.WithFields(logFields).Debug("Scraping following")
 		following := user.Following()
 		scrapeUsers(modelUser, following, helper, helper.UserFollows)
 
 		// Scrape user feed
-		log.WithFields(log.Fields{
-			"username": user.Username,
-			"scraper":  config.ID,
-		}).Debug("Scraping Feed")
+		log.WithFields(logFields).Debug("Scraping Feed")
 		feed := user.Feed()
 		scrapeFeedMedia(modelUser, feed, helper, helper.UserPosts)
 
 		// Scrape Media user is Tagged in
-		log.WithFields(log.Fields{
-			"username": user.Username,
-			"scraper":  config.ID,
-		}).Debug("Scraping Media tagging user")
+		log.WithFields(logFields).Debug("Scraping Media tagging user")
 		if tags, err := user.Tags(nil); err != nil {
-			log.WithFields(log.Fields{
-				"username": user.Username,
-				"scraper":  config.ID,
-			}).Warn(err)
+			log.WithFields(logFields).Warn(err)
 		} else {
 			scrapeFeedMedia(modelUser, tags, helper, helper.UserTagged)
 		}
@@ -99,6 +83,7 @@ func scrapeFeedMedia(user *models.User, media *goinsta.FeedMedia,
 			}
 
 			itemModel := models.NewItem(item)
+			itemModel.ScrapedAt = time.Now()
 			helper.SaveItem(itemModel)
 			relation(user, itemModel)
 
