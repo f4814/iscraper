@@ -449,4 +449,3 @@ func (h *DBHelper) ItemTags(item *models.Item, user *models.User,
 		}).Trace("Add Tags edge")
 	}
 }
-

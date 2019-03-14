@@ -67,9 +67,9 @@ func NewTags(i goinsta.Tag) []Tags {
 
 	for _, j := range i.In {
 		t = append(t, Tags{
-			Position: j.Position,
+			Position:              j.Position,
 			StartTimeInVideoInSec: j.StartTimeInVideoInSec,
-			DurationInVideoInSec: j.DurationInVideoInSec,
+			DurationInVideoInSec:  j.DurationInVideoInSec,
 		})
 	}
 
