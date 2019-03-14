@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"time"
 
 	"sync"
@@ -23,7 +24,7 @@ func Scraper(config ScraperConfig, queue chan goinsta.User, helper DBHelper,
 		relation func(*models.User, *models.Item)) {
 
 		if err := media.Sync(); err != nil {
-			log.WithFields(logFields).Warn(err)
+			// log.WithFields(logFields).Warn(err)
 		}
 
 		for media.Next() {
@@ -41,7 +42,6 @@ func Scraper(config ScraperConfig, queue chan goinsta.User, helper DBHelper,
 				helper.SaveItem(itemModel)
 				relation(modelUser, itemModel)
 
-				// TODO Item tags
 				// TODO: Comments
 
 				if config.Scrape["item_likers"] {
@@ -49,6 +49,31 @@ func Scraper(config ScraperConfig, queue chan goinsta.User, helper DBHelper,
 						likerModel := models.NewUser(liker)
 						helper.SaveUser(likerModel)
 						helper.UserLikes(likerModel, itemModel)
+					}
+				}
+
+				fmt.Println("%#v", item.Tags)
+				if config.Scrape["item_tags"] {
+					for i, t := range models.NewTags(item.FbUserTags) {
+						in := item.FbUserTags.In[i]
+						t.FBUserTag = true
+
+						m := models.NewUser(in.User)
+						helper.SaveUser(m)
+
+						helper.ItemTags(itemModel, m, t)
+					}
+
+					for _, v := range item.Tags.In {
+						for i, t := range models.NewTags(v) {
+							in := v.In[i]
+							t.FBUserTag = false
+
+							m := models.NewUser(in.User)
+							helper.SaveUser(m)
+
+							helper.ItemTags(itemModel, m, t)
+						}
 					}
 				}
 			}

@@ -19,10 +19,12 @@ type Likes struct {
 }
 
 type Tags struct {
-	From string `json:"_from"`
-	To   string `json:"_to"`
-	// TODO FB Tags
-	// TODO Coordinates
+	From                  string      `json:"_from"`
+	To                    string      `json:"_to"`
+	Position              []float64   `json:"position"`
+	StartTimeInVideoInSec interface{} `json:"start_time_in_video_in_sec"`
+	DurationInVideoInSec  interface{} `json:"duration_in_video_in_sec"`
+	FBUserTag             bool        `json:"fb_user_tag"`
 }
 
 type Mentions struct {
@@ -58,4 +60,18 @@ func NewMention(i goinsta.Mentions) Mentions {
 		Rotation: i.Rotation,
 		IsPinned: i.IsPinned,
 	}
+}
+
+func NewTags(i goinsta.Tag) []Tags {
+	t := make([]Tags, len(i.In))
+
+	for _, j := range i.In {
+		t = append(t, Tags{
+			Position: j.Position,
+			StartTimeInVideoInSec: j.StartTimeInVideoInSec,
+			DurationInVideoInSec: j.DurationInVideoInSec,
+		})
+	}
+
+	return t
 }

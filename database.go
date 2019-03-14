@@ -414,7 +414,13 @@ func (h *DBHelper) UserLikes(user *models.User, item *models.Item) {
 	}
 }
 
+// Convenience Frontent for DBHelper.ItemTags so it can be used as relation
 func (h *DBHelper) UserTagged(user *models.User, item *models.Item) {
+	h.ItemTags(item, user, models.Tags{})
+}
+
+func (h *DBHelper) ItemTags(item *models.Item, user *models.User,
+	edge models.Tags) {
 	query := "FOR e IN edge_tags FILTER e._from == @from && e._to == @to RETURN e"
 	cur, err := h.DB.Query(nil, query,
 		map[string]interface{}{
@@ -429,10 +435,8 @@ func (h *DBHelper) UserTagged(user *models.User, item *models.Item) {
 	}
 
 	if !cur.HasMore() {
-		edge := models.Tags{
-			From: string(item.GetMeta().ID),
-			To:   string(user.GetMeta().ID),
-		}
+		edge.From = string(item.GetMeta().ID)
+		edge.To = string(user.GetMeta().ID)
 
 		if _, err := h.EdgeTags.CreateDocument(nil, edge); err != nil {
 			log.Fatal(err)
@@ -445,3 +449,4 @@ func (h *DBHelper) UserTagged(user *models.User, item *models.Item) {
 		}).Trace("Add Tags edge")
 	}
 }
+
